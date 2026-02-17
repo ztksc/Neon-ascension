@@ -1,80 +1,53 @@
+// ===== CANVAS SETUP =====
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
 
+// ===== AUDIO ENGINE =====
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+function playTone(freq, duration, type="sine", volume=0.1){
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = type;
+    osc.frequency.value = freq;
+    gain.gain.value = volume;
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start();
+    setTimeout(()=>osc.stop(), duration);
+}
+
+// background music loop
+function musicLoop(){
+    playTone(110, 300, "sawtooth", 0.05);
+    setTimeout(()=>playTone(220, 300, "triangle", 0.05),300);
+    setTimeout(musicLoop,600);
+}
+
+// ===== GAME STATE =====
 let level = 1;
-let gems = parseInt(localStorage.getItem("gems")) || 0;
 let gameRunning = false;
-
-const characters = {
-    Kael:{hp:100,speed:5,damage:10},
-    Nyra:{hp:80,speed:7,damage:8},
-    Drax:{hp:150,speed:3,damage:15}
-};
-
-const skins = {
-    Default:{cost:0,color:"cyan"},
-    Shadow:{cost:0,color:"white"},
-    Neon:{cost:0,color:"magenta"},
-    Gold:{cost:100,color:"gold"},
-    Flame:{cost:200,color:"orange"},
-    CyberCore:{cost:300,color:"lime"}
-};
 
 let player = {
     x:100,
     y:300,
-    width:40,
-    height:40,
+    w:40,
+    h:40,
+    speed:5,
     dy:0,
     grounded:false,
     hp:100,
-    damage:10,
-    speed:5,
-    color:"cyan"
+    maxHp:100,
+    damage:15,
+    cooldown:0
 };
 
 let enemies = [];
 let boss = null;
 
-function populateMenu(){
-    const cSel=document.getElementById("characterSelect");
-    const sSel=document.getElementById("skinSelect");
-    for(let c in characters){
-        let o=document.createElement("option");
-        o.value=c; o.text=c;
-        cSel.appendChild(o);
-    }
-    for(let s in skins){
-        let o=document.createElement("option");
-        o.value=s;
-        o.text=s+" ("+skins[s].cost+"💎)";
-        sSel.appendChild(o);
-    }
-    document.getElementById("gemsDisplay").innerText="Gemme: "+gems;
-}
-
-function startGame(){
-    const c=document.getElementById("characterSelect").value;
-    const s=document.getElementById("skinSelect").value;
-
-    if(skins[s].cost>gems){ alert("Gemme insufficienti"); return; }
-    gems-=skins[s].cost;
-    localStorage.setItem("gems",gems);
-
-    Object.assign(player,characters[c]);
-    player.color=skins[s].color;
-
-    document.getElementById("menu").style.display="none";
-    document.getElementById("controls").style.display="block";
-    canvas.style.display="block";
-
-    spawnLevel();
-    gameRunning=true;
-    gameLoop();
-}
-
+// ===== LEVEL SPAWN =====
 function spawnLevel(){
     enemies=[];
     boss=null;
@@ -84,43 +57,73 @@ function spawnLevel(){
             enemies.push({
                 x:Math.random()*canvas.width,
                 y:300,
-                hp:30*level
+                hp:50,
+                speed:2+level,
+                damage:5*level
             });
         }
-    } else {
-        boss={x:canvas.width-150,y:300,hp:200,phase:1};
+    }else{
+        boss={
+            x:canvas.width-200,
+            y:300,
+            hp:300,
+            maxHp:300,
+            phase:1,
+            speed:3,
+            damage:20
+        };
     }
 }
 
+// ===== UPDATE =====
 function update(){
-    player.dy+=0.6;
+
+    // gravity
+    player.dy+=0.7;
     player.y+=player.dy;
 
-    if(player.y+player.height>canvas.height-50){
-        player.y=canvas.height-50-player.height;
+    if(player.y+player.h>canvas.height-60){
+        player.y=canvas.height-60-player.h;
         player.dy=0;
         player.grounded=true;
     }
 
+    // cooldown
+    if(player.cooldown>0) player.cooldown--;
+
+    // enemy AI
     enemies.forEach(e=>{
-        if(Math.abs(player.x-e.x)<40){
-            e.hp-=player.damage;
-            if(e.hp<=0){
-                gems+=20;
-                enemies.splice(enemies.indexOf(e),1);
-            }
+        if(e.x < player.x) e.x+=e.speed;
+        else e.x-=e.speed;
+
+        if(Math.abs(e.x-player.x)<40){
+            player.hp -= e.damage*0.01;
         }
     });
 
+    // boss AI
     if(boss){
-        if(Math.abs(player.x-boss.x)<60){
-            boss.hp-=player.damage;
+        if(boss.x > player.x) boss.x-=boss.speed;
+        else boss.x+=boss.speed;
+
+        if(boss.hp < boss.maxHp/2){
+            boss.phase=2;
+            boss.speed=5;
         }
-        if(boss.hp<100) boss.phase=2;
+
+        if(Math.abs(boss.x-player.x)<60){
+            player.hp -= boss.damage*0.02;
+        }
+
         if(boss.hp<=0){
-            alert("Boss sconfitto! Gioco completato!");
+            alert("HAI VINTO!");
             location.reload();
         }
+    }
+
+    if(player.hp<=0){
+        alert("GAME OVER");
+        location.reload();
     }
 
     if(enemies.length===0 && !boss){
@@ -129,23 +132,74 @@ function update(){
     }
 }
 
+// ===== ATTACK =====
+function attack(){
+    if(player.cooldown>0) return;
+
+    playTone(400,100,"square",0.2);
+
+    enemies.forEach(e=>{
+        if(Math.abs(e.x-player.x)<80){
+            e.hp -= player.damage;
+        }
+    });
+
+    enemies = enemies.filter(e=>e.hp>0);
+
+    if(boss && Math.abs(boss.x-player.x)<100){
+        boss.hp -= player.damage;
+    }
+
+    player.cooldown=30;
+}
+
+// ===== DRAW =====
 function draw(){
-    ctx.clearRect(0,0,canvas.width,canvas.height);
 
-    ctx.fillStyle=player.color;
-    ctx.fillRect(player.x,player.y,player.width,player.height);
+    // neon background
+    const grad = ctx.createLinearGradient(0,0,0,canvas.height);
+    grad.addColorStop(0,"#0f0f1f");
+    grad.addColorStop(1,"#000");
+    ctx.fillStyle=grad;
+    ctx.fillRect(0,0,canvas.width,canvas.height);
 
+    // ground
+    ctx.fillStyle="#111";
+    ctx.fillRect(0,canvas.height-60,canvas.width,60);
+
+    // player glow
+    ctx.shadowBlur=20;
+    ctx.shadowColor="cyan";
+    ctx.fillStyle="cyan";
+    ctx.fillRect(player.x,player.y,player.w,player.h);
+    ctx.shadowBlur=0;
+
+    // enemies
     ctx.fillStyle="red";
     enemies.forEach(e=>{
         ctx.fillRect(e.x,e.y,40,40);
     });
 
+    // boss
     if(boss){
         ctx.fillStyle=boss.phase===1?"purple":"orange";
         ctx.fillRect(boss.x,boss.y,80,80);
+
+        // boss hp bar
+        ctx.fillStyle="red";
+        ctx.fillRect(50,50,300,20);
+        ctx.fillStyle="green";
+        ctx.fillRect(50,50,(boss.hp/boss.maxHp)*300,20);
     }
+
+    // player hp bar
+    ctx.fillStyle="red";
+    ctx.fillRect(50,20,200,15);
+    ctx.fillStyle="lime";
+    ctx.fillRect(50,20,(player.hp/player.maxHp)*200,15);
 }
 
+// ===== LOOP =====
 function gameLoop(){
     if(!gameRunning) return;
     update();
@@ -153,11 +207,26 @@ function gameLoop(){
     requestAnimationFrame(gameLoop);
 }
 
+// ===== CONTROLS =====
 document.getElementById("left").ontouchstart=()=>player.x-=player.speed*5;
 document.getElementById("right").ontouchstart=()=>player.x+=player.speed*5;
 document.getElementById("jump").ontouchstart=()=>{
-    if(player.grounded){ player.dy=-15; player.grounded=false; }
+    if(player.grounded){
+        player.dy=-15;
+        player.grounded=false;
+        playTone(300,100,"triangle",0.1);
+    }
 };
-document.getElementById("attack").ontouchstart=()=>{};
+document.getElementById("attack").ontouchstart=attack;
 
-populateMenu();
+// ===== START GAME =====
+function startGame(){
+    document.getElementById("menu").style.display="none";
+    document.getElementById("controls").style.display="block";
+    canvas.style.display="block";
+    gameRunning=true;
+    musicLoop();
+    spawnLevel();
+    gameLoop();
+}
+
