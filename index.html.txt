@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Neon Ascension</title>
+<link rel="stylesheet" href="style.css">
+<link rel="manifest" href="manifest.json">
+</head>
+<body>
+
+<div id="menu">
+    <h1>Neon Ascension</h1>
+    <div id="stats"></div>
+    <select id="characterSelect"></select>
+    <select id="skinSelect"></select>
+    <button onclick="startGame()">Gioca</button>
+    <p id="gemsDisplay"></p>
+</div>
+
+<canvas id="gameCanvas"></canvas>
+
+<div id="controls">
+    <button id="left">◀</button>
+    <button id="jump">⬆</button>
+    <button id="attack">⚡</button>
+    <button id="right">▶</button>
+</div>
+
+<script src="game.js"></script>
+</body>
+</html>
